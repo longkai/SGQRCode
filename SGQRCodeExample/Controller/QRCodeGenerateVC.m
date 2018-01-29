@@ -79,8 +79,8 @@
     CGFloat scale = 0.2;
     
     // 2、将最终合得的图片显示在UIImageView上
-    imageView.image = [SGQRCodeGenerateManager generateWithLogoQRCodeData:@"https://github.com/kingsic" logoImageName:@"logo" logoScaleToSuperView:scale];
-    
+    UIImage *image = [UIImage imageNamed:@"logo"];
+    imageView.image = [SGQRCodeGenerateManager generateWithLogoQRCodeData:@"https://github.com/kingsic" image:image logoScaleToSuperView:scale];
 }
 
 #pragma mark - - - 彩色图标二维码生成

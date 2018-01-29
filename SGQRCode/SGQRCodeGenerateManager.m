@@ -66,13 +66,13 @@
 }
 
 /**
- *  生成一张带有logo的二维码
+ *  生成一张带有图片的二维码
  *
  *  @param data    传入你要生成二维码的数据
- *  @param logoImageName    logo的image名
- *  @param logoScaleToSuperView    logo相对于父视图的缩放比（取值范围：0-1，0，代表不显示，1，代表与父视图大小相同）
+ *  @param image   图片
+ *  @param logoScaleToSuperView    image相对于父视图的缩放比（取值范围：0-1，0，代表不显示，1，代表与父视图大小相同）
  */
-+ (UIImage *)generateWithLogoQRCodeData:(NSString *)data logoImageName:(NSString *)logoImageName logoScaleToSuperView:(CGFloat)logoScaleToSuperView {
++ (UIImage *)generateWithLogoQRCodeData:(NSString *)data image:(UIImage *)image logoScaleToSuperView:(CGFloat)logoScaleToSuperView {
     // 1、创建滤镜对象
     CIFilter *filter = [CIFilter filterWithName:@"CIQRCodeGenerator"];
     
@@ -104,8 +104,7 @@
     [start_image drawInRect:CGRectMake(0, 0, start_image.size.width, start_image.size.height)];
     
     // 再把小图片画上去
-    NSString *icon_imageName = logoImageName;
-    UIImage *icon_image = [UIImage imageNamed:icon_imageName];
+    UIImage *icon_image = image;
     CGFloat icon_imageW = start_image.size.width * logoScaleToSuperView;
     CGFloat icon_imageH = start_image.size.height * logoScaleToSuperView;
     CGFloat icon_imageX = (start_image.size.width - icon_imageW) * 0.5;
