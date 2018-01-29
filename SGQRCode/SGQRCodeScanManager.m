@@ -106,9 +106,14 @@ static SGQRCodeScanManager *_instance;
     CGFloat w = [UIScreen mainScreen].bounds.size.width;
     CGFloat h = [UIScreen mainScreen].bounds.size.height;
     _videoPreviewLayer.frame = CGRectMake(x, y, w, h);
-    [currentController.view.layer insertSublayer:_videoPreviewLayer atIndex:0];
+    // Note: 当次方法处于非UI线程时，有些时候无法出行相机扫描界面
+    dispatch_async(dispatch_get_main_queue(), ^{
+        [currentController.view.layer insertSublayer:_videoPreviewLayer atIndex:0];
+    });
     
     // 9、启动会话
+    // Note：按照苹果的文档，该方法会block掉主线程，所以应当在非UI线程调用本方法
+    // https://developer.apple.com/documentation/avfoundation/avcapturesession
     [_session startRunning];
 }
 

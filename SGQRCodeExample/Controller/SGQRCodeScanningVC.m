@@ -42,7 +42,7 @@
 - (void)viewDidLoad {
     [super viewDidLoad];
     // Do any additional setup after loading the view from its nib.
-    self.view.backgroundColor = [UIColor clearColor];
+    self.view.backgroundColor = [UIColor blackColor]; // Note: iOS应用打开相机扫描二维码前几乎都会先显示黑屏
     self.automaticallyAdjustsScrollViewInsets = NO;
     
     [self.view addSubview:self.scanningView];
@@ -84,12 +84,17 @@
 }
 
 - (void)setupQRCodeScanning {
-    self.manager = [SGQRCodeScanManager sharedManager];
-    NSArray *arr = @[AVMetadataObjectTypeQRCode, AVMetadataObjectTypeEAN13Code, AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode128Code];
-    // AVCaptureSessionPreset1920x1080 推荐使用，对于小型的二维码读取率较高
-    [_manager setupSessionPreset:AVCaptureSessionPreset1920x1080 metadataObjectTypes:arr currentController:self];
-//    [manager cancelSampleBufferDelegate];
-    _manager.delegate = self;
+    // Note: 苹果强调了 `startRunning` 会阻塞线程
+    // https://developer.apple.com/documentation/avfoundation/avcapturesession/1388185-startrunning
+    __weak SGQRCodeScanningVC *weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(0, DISPATCH_QUEUE_PRIORITY_HIGH), ^{
+        weakSelf.manager = [SGQRCodeScanManager sharedManager];
+        NSArray *arr = @[AVMetadataObjectTypeQRCode, AVMetadataObjectTypeEAN13Code, AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode128Code];
+        // AVCaptureSessionPreset1920x1080 推荐使用，对于小型的二维码读取率较高
+        [_manager setupSessionPreset:AVCaptureSessionPreset1920x1080 metadataObjectTypes:arr currentController:weakSelf];
+        //    [manager cancelSampleBufferDelegate];
+        _manager.delegate = weakSelf;
+    });
 }
 
 #pragma mark - - - SGQRCodeAlbumManagerDelegate
@@ -114,6 +119,8 @@
     NSLog(@"metadataObjects - - %@", metadataObjects);
     if (metadataObjects != nil && metadataObjects.count > 0) {
         [scanManager palySoundName:@"SGQRCode.bundle/sound.caf"];
+        // 关闭也会阻塞UI线程，见 https://developer.apple.com/documentation/avfoundation/avcapturesession/1385661-stoprunning
+        // 但是这里的尴尬之处在于，如果不block，会持续不断的接收扫描到的数据，相对于启动来说，关闭几乎不会延迟
         [scanManager stopRunning];
         [scanManager videoPreviewLayerRemoveFromSuperlayer];
         
