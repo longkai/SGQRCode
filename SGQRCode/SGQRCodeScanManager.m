@@ -18,6 +18,8 @@
 @property (nonatomic, strong) AVCaptureSession *session;
 @property (nonatomic, strong) AVCaptureVideoDataOutput *videoDataOutput;
 @property (nonatomic, strong) AVCaptureVideoPreviewLayer *videoPreviewLayer;
+
+@property (nonatomic, assign) BOOL running;
 @end
 
 @implementation SGQRCodeScanManager
@@ -45,7 +47,15 @@ static SGQRCodeScanManager *_instance;
 }
 
 - (void)setupSessionPreset:(NSString *)sessionPreset metadataObjectTypes:(NSArray *)metadataObjectTypes currentController:(UIViewController *)currentController {
-    
+    // Note: 苹果强调了 `startRunning` 会阻塞线程，所以应当在非UI线程调用本方法
+    // https://developer.apple.com/documentation/avfoundation/avcapturesession/1388185-startrunning
+    __weak SGQRCodeScanManager *weakSelf = self;
+    dispatch_async(dispatch_get_global_queue(0, DISPATCH_QUEUE_PRIORITY_HIGH), ^{
+        [weakSelf innerSetupSessionPreset:sessionPreset metadataObjectTypes:metadataObjectTypes currentController:currentController];
+    });
+}
+
+- (void)innerSetupSessionPreset:(NSString *)sessionPreset metadataObjectTypes:(NSArray *)metadataObjectTypes currentController:(UIViewController *)currentController {
     if (sessionPreset == nil) {
         NSException *excp = [NSException exceptionWithName:@"SGQRCode" reason:@"setupSessionPreset:metadataObjectTypes:currentController: 方法中的 sessionPreset 参数不能为空" userInfo:nil];
         [excp raise];
@@ -60,7 +70,7 @@ static SGQRCodeScanManager *_instance;
         NSException *excp = [NSException exceptionWithName:@"SGQRCode" reason:@"setupSessionPreset:metadataObjectTypes:currentController: 方法中的 currentController 参数不能为空" userInfo:nil];
         [excp raise];
     }
-
+    
     // 1、获取摄像设备
     AVCaptureDevice *device = [AVCaptureDevice defaultDeviceWithMediaType:AVMediaTypeVideo];
     
@@ -77,7 +87,7 @@ static SGQRCodeScanManager *_instance;
     
     // 设置扫描范围（每一个取值0～1，以屏幕右上角为坐标原点）
     // 注：微信二维码的扫描范围是整个屏幕，这里并没有做处理（可不用设置）; 如需限制扫描范围，打开下一句注释代码并进行相应调试
-//    metadataOutput.rectOfInterest = CGRectMake(0.05, 0.2, 0.7, 0.6);
+    //    metadataOutput.rectOfInterest = CGRectMake(0.05, 0.2, 0.7, 0.6);
     
     // 4、创建会话对象
     _session = [[AVCaptureSession alloc] init];
@@ -88,10 +98,10 @@ static SGQRCodeScanManager *_instance;
     [_session addOutput:metadataOutput];
     // 5(1)添加设备输出流到会话对象；与 3(1) 构成识别光线强弱
     [_session addOutput:_videoDataOutput];
-
+    
     // 6、添加设备输入流到会话对象
     [_session addInput:deviceInput];
-
+    
     // 7、设置数据输出类型，需要将数据输出添加到会话后，才能指定元数据类型，否则会报错
     // 设置扫码支持的编码格式(如下设置条形码和二维码兼容)
     // @[AVMetadataObjectTypeQRCode, AVMetadataObjectTypeEAN13Code,  AVMetadataObjectTypeEAN8Code, AVMetadataObjectTypeCode128Code]
@@ -112,13 +122,15 @@ static SGQRCodeScanManager *_instance;
     });
     
     // 9、启动会话
-    // Note：按照苹果的文档，该方法会block掉主线程，所以应当在非UI线程调用本方法
-    // https://developer.apple.com/documentation/avfoundation/avcapturesession
-    [_session startRunning];
+    //    [_session startRunning];
+    [self startRunning];
 }
 
 #pragma mark - - - AVCaptureMetadataOutputObjectsDelegate
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputMetadataObjects:(NSArray *)metadataObjects fromConnection:(AVCaptureConnection *)connection {
+    if (!self.running) {
+        return;
+    }
     if (self.delegate && [self.delegate respondsToSelector:@selector(QRCodeScanManager:didOutputMetadataObjects:)]) {
         [self.delegate QRCodeScanManager:self didOutputMetadataObjects:metadataObjects];
     }
@@ -126,6 +138,9 @@ static SGQRCodeScanManager *_instance;
 
 #pragma mark - - - AVCaptureVideoDataOutputSampleBufferDelegate的方法
 - (void)captureOutput:(AVCaptureOutput *)captureOutput didOutputSampleBuffer:(CMSampleBufferRef)sampleBuffer fromConnection:(AVCaptureConnection *)connection {
+    if (!self.running) {
+        return;
+    }
     // 这个方法会时时调用，但内存很稳定
     CFDictionaryRef metadataDict = CMCopyDictionaryOfAttachments(NULL,sampleBuffer, kCMAttachmentMode_ShouldPropagate);
     NSDictionary *metadata = [[NSMutableDictionary alloc] initWithDictionary:(__bridge NSDictionary*)metadataDict];
@@ -141,11 +156,18 @@ static SGQRCodeScanManager *_instance;
 }
 
 - (void)startRunning {
+    // 关闭也会阻塞UI线程，见 https://developer.apple.com/documentation/avfoundation/avcapturesession/1385661-stoprunning
+    self.running = YES;
     [_session startRunning];
 }
 
 - (void)stopRunning {
-    [_session stopRunning];
+    self.running = NO;
+    __weak SGQRCodeScanManager *weakSelf = self;
+    dispatch_sync(dispatch_get_global_queue(0,  DISPATCH_QUEUE_PRIORITY_HIGH), ^{
+        [weakSelf.session stopRunning];
+        weakSelf.session = nil;
+    });
 //    _session = nil;
 }
 
